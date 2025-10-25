@@ -1,0 +1,26 @@
+#!/bin/bash
+# получает на вход путь к монитору и уровень яркости от 0 до 100, если передана
+# в случае если яркость не передана - просто читает текущую яркость
+
+monitor=$1;
+brightness=$2;
+brightness_current=$(ddccontrol -r 0x10 dev:$monitor 2> /dev/null | awk -F'/' '/Управление 0x10:/ {print $2}');
+
+# устанавливаем яркость если передан второй параметр и текущая яркость отличается
+
+if [ -n "$brightness" ]; then
+    if [ "$brightness" -ne "$brightness_current" ]; then
+        # меняем яркость плавно
+        # for b in $(seq $brightness_current 1 $brightness); do
+        #     ddccontrol -r 0x10 -w $b dev:$monitor >/dev/null 2>&1;
+        #     #sleep 0.02;
+        # done
+        # for b in $(seq $brightness_current -1 $brightness); do
+        #     ddccontrol -r 0x10 -w $b dev:$monitor >/dev/null 2>&1;
+        #     #sleep 0.02;
+        # done
+        ddccontrol -r 0x10 -w $brightness dev:$monitor >/dev/null 2>&1;
+    fi
+else
+    echo $brightness_current;
+fi
