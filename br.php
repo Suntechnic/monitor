@@ -142,7 +142,7 @@ if ($Brightness < 0) {
     $LuxKey = round(10000 * (float)$Lux);
     $Brightness = (int)round(interp($LuxKey, $mapLux2Br_linear) );
     echo "Автояркость по освещенности $Lux => $Brightness\n";
-    die();
+    //die();
 } else {
     # запишим данные в лог, чтобы собирать статистику
     $LogLine = '['.date('Y-m-d H:i:s')."],$Brightness,$Lux\n";
