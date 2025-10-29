@@ -13,18 +13,29 @@ function trim_log(string $path, int $maxLines): void
     // Читаем файл потоково и храним кольцевой буфер из последних $maxLines строк
     $fh = new SplFileObject($path, 'r');
     $buffer = [];
+    $totalLines = 0;
     foreach ($fh as $line) {
         if ($line === false) {
             break;
         }
-        $buffer[] = rtrim($line, "\r\n");
+        $trimmedLine = rtrim($line, "\r\n");
+        // Пропускаем финальную пустую строку, которую SplFileObject добавляет в конце
+        if ($trimmedLine === '' && $fh->eof()) {
+            break;
+        }
+        $buffer[] = $trimmedLine;
+        $totalLines++;
         if (count($buffer) > $maxLines) {
             array_shift($buffer); // удаляем самую старую строку
         }
     }
 
     // Если строк и так <= maxLines — ничего не делаем
-    // Но можно просто перезаписать тем же содержимым безопасно и атомарно
+    if ($totalLines <= $maxLines) {
+        return;
+    }
+
+    // Перезаписываем файл безопасно и атомарно
     $tmp = $path . '.tmp.' . getmypid();
     file_put_contents($tmp, implode(PHP_EOL, $buffer), LOCK_EX);
     // Атомарная замена файла
