@@ -19,7 +19,7 @@ function trim_log(string $path, int $maxLines): void
             break;
         }
         $trimmedLine = rtrim($line, "\r\n");
-        // Пропускаем финальную пустую строку, которую SplFileObject добавляет в конце
+        // Пропускаем финальную пустую итерацию, когда файл заканчивается переводом строки
         if ($trimmedLine === '' && $fh->eof()) {
             break;
         }
