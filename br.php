@@ -11,6 +11,7 @@ function trim_log(string $path, int $maxLines): void
     }
 
     // Читаем файл потоково и храним кольцевой буфер из последних $maxLines строк
+    $NeedRewrite = false;
     $fh = new SplFileObject($path, 'r');
     $buffer = [];
     foreach ($fh as $line) {
@@ -20,15 +21,18 @@ function trim_log(string $path, int $maxLines): void
         $buffer[] = rtrim($line, "\r\n");
         if (count($buffer) > $maxLines) {
             array_shift($buffer); // удаляем самую старую строку
+            $NeedRewrite = true;
         }
     }
 
     // Если строк и так <= maxLines — ничего не делаем
-    // Но можно просто перезаписать тем же содержимым безопасно и атомарно
-    $tmp = $path . '.tmp.' . getmypid();
-    file_put_contents($tmp, implode(PHP_EOL, $buffer), LOCK_EX);
-    // Атомарная замена файла
-    rename($tmp, $path);
+    if ($NeedRewrite) {
+        // Но можно просто перезаписать тем же содержимым безопасно и атомарно
+        $tmp = $path . '.tmp.' . getmypid();
+        file_put_contents($tmp, implode(PHP_EOL, $buffer), LOCK_EX);
+        // Атомарная замена файла
+        rename($tmp, $path);
+    }
 }
 
 // функция получает на значение и карту преобразовния и возвращает инетерполированное значение
