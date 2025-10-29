@@ -26,7 +26,7 @@ function trim_log(string $path, int $maxLines): void
     // Если строк и так <= maxLines — ничего не делаем
     // Но можно просто перезаписать тем же содержимым безопасно и атомарно
     $tmp = $path . '.tmp.' . getmypid();
-    file_put_contents($tmp, implode(PHP_EOL, $buffer) . PHP_EOL, LOCK_EX);
+    file_put_contents($tmp, implode(PHP_EOL, $buffer), LOCK_EX);
     // Атомарная замена файла
     rename($tmp, $path);
 }
