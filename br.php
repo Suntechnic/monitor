@@ -3,6 +3,7 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Определение функций
+
 // Обрезает файл до указанного числа строк
 function trim_log(string $path, int $maxLines): void
 {
@@ -133,45 +134,29 @@ while ($Work) {
             }
         }
         
+        asort($mapBr2Lux);
+
         //$mapBr2Lux[0] = 0; // яркость 0 соответствует освещенности 0
         
-        asort($mapBr2Lux);
+        
         $mapLux2Br = array_flip($mapBr2Lux);
         $mapLux2Br[0] = 0; // освещенность 0 соответствует яркости 0
         ksort($mapLux2Br);
+
         print_r($mapLux2Br); 
 
         // выровняем карту Lux2Br по возрастанию
-        $proc_linearing = function (array $map): array
-        {
-            $map_linear = [];
-            $PrevKey = 0;
-            $PrevValue = 0;
-            foreach ($map as $Key => $Value) {
-                if ($Value < $PrevValue) {
-                    unset($map_linear[$PrevKey]);
-                    $map_linear[round(($PrevKey+$Key)/2)] = round(($PrevValue+$Value)/2);
-                } else {
-                    $map_linear[$Key] = $Value;
-                }
-                $PrevValue = $Value;
-                $PrevKey = $Key;
-            }
-            return $map_linear;
-        };
-        $mapLux2Br_linear = $proc_linearing($mapLux2Br);
-        while (count($mapLux2Br_linear) < count($mapLux2Br)) {
-            $mapLux2Br = $mapLux2Br_linear;
-            $mapLux2Br_linear = $proc_linearing($mapLux2Br_linear);
-        }
+        // отсортируем по значениям сохраняя ключи
+        $lstValues = array_values($mapLux2Br);
+        sort($lstValues);
+        $mapLux2Br = array_combine(array_keys($mapLux2Br), $lstValues);
+        print_r($mapLux2Br); 
 
-        print_r($mapLux2Br_linear); 
         // получим яркость по освещенности
         $LuxKey = round(10000 * (float)$Lux);
-        $Brightness = (int)round(interp($LuxKey, $mapLux2Br_linear) );
+        $Brightness = (int)round(interp($LuxKey, $mapLux2Br) );
         echo "Автояркость по освещенности $Lux => $Brightness\n";
-        
-        
+ 
     } else {
 
         # запишим данные в лог, чтобы собирать статистику
