@@ -14,11 +14,18 @@ function trim_log(string $path, int $maxLines): void
     $NeedRewrite = false;
     $fh = new SplFileObject($path, 'r');
     $buffer = [];
+    $totalLines = 0;
     foreach ($fh as $line) {
         if ($line === false) {
             break;
         }
-        $buffer[] = rtrim($line, "\r\n");
+        $trimmedLine = rtrim($line, "\r\n");
+        // Пропускаем финальную пустую итерацию, когда файл заканчивается переводом строки
+        if ($trimmedLine === '' && $fh->eof()) {
+            break;
+        }
+        $buffer[] = $trimmedLine;
+        $totalLines++;
         if (count($buffer) > $maxLines) {
             array_shift($buffer); // удаляем самую старую строку
             $NeedRewrite = true;
@@ -26,6 +33,7 @@ function trim_log(string $path, int $maxLines): void
     }
 
     // Если строк и так <= maxLines — ничего не делаем
+<<<<<<< HEAD
     if ($NeedRewrite) {
         // Но можно просто перезаписать тем же содержимым безопасно и атомарно
         $tmp = $path . '.tmp.' . getmypid();
@@ -33,6 +41,17 @@ function trim_log(string $path, int $maxLines): void
         // Атомарная замена файла
         rename($tmp, $path);
     }
+=======
+    if ($totalLines <= $maxLines) {
+        return;
+    }
+
+    // Перезаписываем файл безопасно и атомарно
+    $tmp = $path . '.tmp.' . getmypid();
+    file_put_contents($tmp, implode(PHP_EOL, $buffer), LOCK_EX);
+    // Атомарная замена файла
+    rename($tmp, $path);
+>>>>>>> d04a942436033cd59780628f49d851849708f251
 }
 
 // функция получает на значение и карту преобразовния и возвращает инетерполированное значение
