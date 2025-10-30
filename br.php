@@ -3,6 +3,7 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Определение функций
+
 // Обрезает файл до указанного числа строк
 function trim_log(string $path, int $maxLines): void
 {
@@ -11,24 +12,35 @@ function trim_log(string $path, int $maxLines): void
     }
 
     // Читаем файл потоково и храним кольцевой буфер из последних $maxLines строк
+    $NeedRewrite = false;
     $fh = new SplFileObject($path, 'r');
     $buffer = [];
+    $totalLines = 0;
     foreach ($fh as $line) {
         if ($line === false) {
             break;
         }
-        $buffer[] = rtrim($line, "\r\n");
+        $trimmedLine = rtrim($line, "\r\n");
+        // Пропускаем финальную пустую итерацию, когда файл заканчивается переводом строки
+        if ($trimmedLine === '' && $fh->eof()) {
+            break;
+        }
+        $buffer[] = $trimmedLine;
+        $totalLines++;
         if (count($buffer) > $maxLines) {
             array_shift($buffer); // удаляем самую старую строку
+            $NeedRewrite = true;
         }
     }
 
     // Если строк и так <= maxLines — ничего не делаем
-    // Но можно просто перезаписать тем же содержимым безопасно и атомарно
-    $tmp = $path . '.tmp.' . getmypid();
-    file_put_contents($tmp, implode(PHP_EOL, $buffer) . PHP_EOL, LOCK_EX);
-    // Атомарная замена файла
-    rename($tmp, $path);
+    if ($NeedRewrite) {
+        // Но можно просто перезаписать тем же содержимым безопасно и атомарно
+        $tmp = $path . '.tmp.' . getmypid();
+        file_put_contents($tmp, implode(PHP_EOL, $buffer), LOCK_EX);
+        // Атомарная замена файла
+        rename($tmp, $path);
+    }
 }
 
 // функция получает на значение и карту преобразовния и возвращает инетерполированное значение
@@ -83,89 +95,117 @@ function getBrightness (int $Brightness, array $mapMasterBr2Lux, array $mapSlave
 // Получаем аргумент яркости для главного монитора
 $Brightness = $argv[1] ?? -1;
 
-// получим освещенность помещения с помощь скрипта lux
-$cmdLux = __DIR__.'/lux';
-exec($cmdLux, $lstOutputLux, $ReturnVarLux);
-$Lux = $lstOutputLux[0];
+if ($Brightness < 0) $AutoMode = true;
+else $AutoMode = false;
 
-if ($Brightness < 0) {
-    // автоматическая установка яркости по освещенности помещения
-    // загрузим данные из лога
-    $lstLog = file(__DIR__.'/br.log', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-    $mapLux2Br = [];
-    $mapBr2Lux = [];
-    foreach ($lstLog as $LogLine) {
-        list($DateLog, $BrLog, $LuxLog) = explode(',', $LogLine);
-        $LuxLog = round(10000 * (float)trim($LuxLog));
+$FreqMax = 12; // максимальная частота обновления яркости в секунду
+$FreqMin = 1; // минимальная частота обновления яркости в секунду
+$Freq = $FreqMin;
 
-        if (isset($mapBr2Lux[trim($BrLog)])) {
-            $mapBr2Lux[trim($BrLog)] = intval(round(($mapBr2Lux[trim($BrLog)] + $LuxLog) / 2));
-        } else {
-            $mapBr2Lux[trim($BrLog)] = intval($LuxLog);
-        }
-    }
-    
-    //$mapBr2Lux[0] = 0; // яркость 0 соответствует освещенности 0
-    
-    asort($mapBr2Lux);
-    $mapLux2Br = array_flip($mapBr2Lux);
-    $mapLux2Br[0] = 0; // освещенность 0 соответствует яркости 0
-    ksort($mapLux2Br);
-    print_r($mapLux2Br); 
+$LastBrightness = $Brightness;
 
-    // выровняем карту Lux2Br по возрастанию
-    $proc_linearing = function (array $map): array
-    {
-        $map_linear = [];
-        $PrevKey = 0;
-        $PrevValue = 0;
-        foreach ($map as $Key => $Value) {
-            if ($Value < $PrevValue) {
-                unset($map_linear[$PrevKey]);
-                $map_linear[round(($PrevKey+$Key)/2)] = round(($PrevValue+$Value)/2);
+$Work = true;
+
+while ($Work) {
+
+    // получим освещенность помещения с помощь скрипта lux
+    $cmdLux = __DIR__.'/lux';
+    $lstOutputLux = [];
+    $ReturnVarLux = 0;
+    exec($cmdLux, $lstOutputLux, $ReturnVarLux);
+    $Lux = $lstOutputLux[0];
+
+    echo "\n\n\n\nОсвещенность помещения: $Lux\n";
+
+    if ($Brightness < 0) {
+        // автоматическая установка яркости по освещенности помещения
+        // загрузим данные из лога
+        $lstLog = file(__DIR__.'/br.log', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        $mapLux2Br = [];
+        $mapBr2Lux = [];
+        foreach ($lstLog as $LogLine) {
+            list($DateLog, $BrLog, $LuxLog) = explode(',', $LogLine);
+            $LuxLog = round(10000 * (float)trim($LuxLog));
+
+            if (isset($mapBr2Lux[trim($BrLog)])) {
+                $mapBr2Lux[trim($BrLog)] = intval(round(($mapBr2Lux[trim($BrLog)] + $LuxLog) / 2));
             } else {
-                $map_linear[$Key] = $Value;
+                $mapBr2Lux[trim($BrLog)] = intval($LuxLog);
             }
-            $PrevValue = $Value;
-            $PrevKey = $Key;
         }
-        return $map_linear;
-    };
-    $mapLux2Br_linear = $proc_linearing($mapLux2Br);
-    while (count($mapLux2Br_linear) < count($mapLux2Br)) {
-        $mapLux2Br = $mapLux2Br_linear;
-        $mapLux2Br_linear = $proc_linearing($mapLux2Br_linear);
+        
+        asort($mapBr2Lux);
+
+        //$mapBr2Lux[0] = 0; // яркость 0 соответствует освещенности 0
+        
+        
+        $mapLux2Br = array_flip($mapBr2Lux);
+        $mapLux2Br[0] = 0; // освещенность 0 соответствует яркости 0
+        ksort($mapLux2Br);
+
+        print_r($mapLux2Br); 
+
+        // выровняем карту Lux2Br по возрастанию
+        // отсортируем по значениям сохраняя ключи
+        $lstValues = array_values($mapLux2Br);
+        sort($lstValues);
+        $mapLux2Br = array_combine(array_keys($mapLux2Br), $lstValues);
+        print_r($mapLux2Br); 
+
+        // получим яркость по освещенности
+        $LuxKey = round(10000 * (float)$Lux);
+        $Brightness = (int)round(interp($LuxKey, $mapLux2Br) );
+        echo "Автояркость по освещенности $Lux => $Brightness\n";
+ 
+    } else {
+
+        # запишим данные в лог, чтобы собирать статистику
+        $LogLine = '['.date('Y-m-d H:i:s')."],$Brightness,$Lux\n";
+        file_put_contents(__DIR__.'/br.log', $LogLine, FILE_APPEND);
+
+        // обрежем лог до 1000 строк
+        trim_log(__DIR__.'/br.log', 1000);
     }
 
-    print_r($mapLux2Br_linear); 
-    // получим яркость по освещенности
-    $LuxKey = round(10000 * (float)$Lux);
-    $Brightness = (int)round(interp($LuxKey, $mapLux2Br_linear) );
-    echo "Автояркость по освещенности $Lux => $Brightness\n";
-    //die();
-} else {
-    # запишим данные в лог, чтобы собирать статистику
-    $LogLine = '['.date('Y-m-d H:i:s')."],$Brightness,$Lux\n";
-    file_put_contents(__DIR__.'/br.log', $LogLine, FILE_APPEND);
 
-    // обрежем лог до 1000 строк
-    trim_log(__DIR__.'/br.log', 1000);
-}
+    // получаем конфигурацию мониторов
+    $lstMonitors = include __DIR__ . '/monitors.php';
+    $dctMaster = $lstMonitors[0]; // главный монитор
 
 
-// получаем конфигурацию мониторов
-$lstMonitors = include __DIR__ . '/monitors.php';
-$dctMaster = $lstMonitors[0]; // главный монитор
-
-
-// уставновим яркости для всех мониторов использую скрипт brightness
-foreach ($lstMonitors as $I => $dctMonitor) {
-    $Br = ($I == 0) ? $Brightness : getBrightness($Brightness, $dctMaster['brightness2lux'], $dctMonitor['brightness2lux']);
-    $cmd = __DIR__."/brightness ".escapeshellarg($dctMonitor['dev'])." ".escapeshellarg($Br);
-    echo "$cmd\n";
-    exec($cmd, $output, $return_var);
-    if ($return_var != 0) {
-        echo "Ошибка выполнения команды: $cmd\n";
+    // уставновим яркости для всех мониторов использую скрипт brightness
+    foreach ($lstMonitors as $I => $dctMonitor) {
+        $Br = ($I == 0) ? $Brightness : getBrightness($Brightness, $dctMaster['brightness2lux'], $dctMonitor['brightness2lux']);
+        $cmd = __DIR__."/brightness ".escapeshellarg($dctMonitor['dev'])." ".escapeshellarg($Br);
+        echo "$cmd\n";
+        exec($cmd, $output, $return_var);
+        if ($return_var != 0) {
+            echo "Ошибка выполнения команды: $cmd\n";
+        }
     }
+
+    
+
+    if ($Brightness != $LastBrightness) {
+        // если яркость изменилась, увеличим частоту обновления
+        $Freq = $FreqMin;
+        $LastBrightness = $Brightness;
+    } else {
+        // если яркость не изменилась, уменьшим частоту обновления
+        $Freq = min($Freq + 1, $FreqMax);
+    }
+
+    if ($AutoMode) {
+        // в автоматическом режиме повторяем каждые 2 секунды
+        $Brightness = -1;
+    } else {
+        $Work = false;
+        break;
+    }
+
+
+    echo "Текущая частота обновления: $Freq\n";
+
+    sleep($Freq);
 }
 

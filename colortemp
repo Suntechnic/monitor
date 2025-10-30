@@ -1,0 +1,10 @@
+#!/bin/bash
+
+monitor=$1;
+preset=$2;
+
+
+current_temp=$(ddccontrol -r 0x14 dev:$monitor 2>/dev/null | awk -F'/' '/Управление 0x14:/ {print $2}')
+if [ "$current_temp" != "$preset" ]; then
+    ddccontrol -r 0x14 -w "$preset" dev:$monitor > /dev/null 2>&1
+fi
